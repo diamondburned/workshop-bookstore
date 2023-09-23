@@ -1,0 +1,244 @@
+<!doctype html>
+<title>ACM Bookstore</title>
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css"
+/>
+
+<main class="container">
+  <nav>
+    <h2>ACM Bookstore</h2>
+  </nav>
+  <div id="books" class="grid"></div>
+</main>
+
+<footer class="container">
+  <span>Your ACM name is <code id="acm-name"></code>.</span>
+  <span>
+    Buggy?
+    <a href="#" onclick="return clearACMName()">
+      Clear your <code>X-ACM-Name</code>.
+    </a>
+  </span>
+</footer>
+
+<template id="book">
+  <div class="book">
+    <img class="background" src="https://via.placeholder.com/150" />
+    <div>
+      <header>
+        <p class="price"></p>
+        <p class="isbn"><span></span></p>
+      </header>
+      <h3 class="title"></h3>
+      <p class="author"></p>
+    </div>
+  </div>
+</template>
+
+<style>
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  nav {
+    margin-bottom: 1em;
+  }
+
+  nav > h2 {
+    margin: 0;
+  }
+
+  button.del {
+    background-color: var(--del-color);
+    border-color: var(--del-color);
+  }
+
+  #books {
+    gap: 1em;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(275px, min-content));
+  }
+
+  .book {
+    width: 275px;
+    height: 400px;
+    display: grid;
+  }
+
+  .book > img,
+  .book > div {
+    width: 100%;
+    height: 100%;
+    grid-area: 1 / 1;
+  }
+
+  .book > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 1em;
+    overflow: hidden;
+    background-color: #fff6;
+    background-image: linear-gradient(to top, #fffb, #fff8);
+  }
+
+  @media only screen and (prefers-color-scheme: dark) {
+    .book > div {
+      background-color: #00000066;
+      background-image: linear-gradient(to top, #000b, #0008);
+    }
+  }
+
+  .book > div > * {
+    margin: 0.5em 0;
+  }
+
+  .book > img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .book h2 {
+    font-size: 1.2em;
+  }
+
+  .book p {
+    font-size: 0.85em;
+  }
+
+  .book header {
+    margin-bottom: auto;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .book header > * {
+    margin: 0;
+    font-size: 0.85em;
+  }
+
+  .book header .isbn {
+    font-size: 0.75em;
+  }
+</style>
+
+<script>
+  // Enforce X-ACM-Name before any JS runs.
+  if (!localStorage.getItem("X-ACM-Name")) {
+    const name = prompt("What was your ACM name? (X-ACM-Name value)");
+    localStorage.setItem("X-ACM-Name", name);
+  }
+
+  function acmName() {
+    const name = localStorage.getItem("X-ACM-Name");
+    if (!name) {
+      throw new Error("X-ACM-Name not set");
+    }
+    return name;
+  }
+
+  function clearACMName() {
+    localStorage.removeItem("X-ACM-Name");
+    document.location.reload();
+  }
+
+  document.getElementById("acm-name").textContent = acmName();
+</script>
+
+<script>
+  const addBookForm = document.getElementById("add-book-form");
+  addBookForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const formData = new FormData(addBookForm);
+    const book = {
+      isbn: formData.get("isbn"),
+      title: formData.get("title"),
+      author: formData.get("author"),
+      price: Math.round(parseFloat(formData.get("price")) / 100),
+    };
+
+    await fetch("/api/v0/books", {
+      method: "POST",
+      body: JSON.stringify(book),
+      headers: {
+        "Content-Type": "application/json",
+        "X-ACM-Name": acmName(),
+      },
+    });
+
+    location.reload(); // lazy
+  });
+
+  const deleteBookForm = document.getElementById("delete-book-form");
+  deleteBookForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const formData = new FormData(deleteBookForm);
+    const isbns = formData.get("isbns").split(/\s+/);
+
+    for (const isbn of isbns) {
+      await fetch(`/api/v0/books/${isbn}`, {
+        method: "DELETE",
+        "X-ACM-Name": acmName(),
+      });
+    }
+
+    location.reload(); // lazy
+  });
+
+  function revealDialog(id, open) {
+    const dialog = document.getElementById(id);
+    if (open) {
+      dialog.showModal();
+    } else {
+      dialog.close();
+    }
+  }
+
+  function revealAddBook(open) {
+    revealDialog("add-book", open);
+  }
+
+  function revealDeleteBook(open) {
+    revealDialog("delete-book", open);
+  }
+</script>
+
+<script type="module">
+  function dollars(cents) {
+    return `$${(cents / 100).toFixed(2)}`;
+  }
+
+  function bookCover(book) {
+    const id = book.isbn.replace("-", "");
+    return `https://covers.openlibrary.org/b/isbn/${id}-L.jpg`;
+  }
+
+  function setText(el, sel, text) {
+    el.querySelector(sel).textContent = text;
+  }
+
+  const bookTemplate = document.getElementById("book");
+  const booksDiv = document.getElementById("books");
+
+  const books = await fetch("/api/v0/books", {
+    headers: {
+      "X-ACM-Name": acmName(),
+    },
+  }).then((r) => r.json());
+  for (const book of books) {
+    const elem = bookTemplate.content.cloneNode(true);
+    elem.querySelector(".background").src = bookCover(book);
+    setText(elem, ".isbn > span", book.isbn);
+    setText(elem, ".title", book.title);
+    setText(elem, ".author", book.author);
+    setText(elem, ".price", dollars(book.price));
+    booksDiv.appendChild(elem);
+  }
+</script>
